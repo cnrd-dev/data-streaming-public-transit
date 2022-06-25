@@ -1,14 +1,17 @@
 """Producer base-class providing common utilites and functionality"""
+from ensurepip import bootstrap
 import logging
 import time
 
 
 from confluent_kafka import avro
 from confluent_kafka.admin import AdminClient, NewTopic
-from confluent_kafka.avro import AvroProducer
+from confluent_kafka.avro import AvroProducer, CachedSchemaRegistryClient
 
 logger = logging.getLogger(__name__)
 
+BROKER_URL = ["PLAINTEXT://localhost:9092" ,"PLAINTEXT://localhost:9093", "PLAINTEXT://localhost:9094"]
+SCHEMA_REGISTRY_URL = "http://localhost:8081"
 
 class Producer:
     """Defines and provides common functionality amongst Producers"""
@@ -37,10 +40,11 @@ class Producer:
         # and use the Host URL for Kafka and Schema Registry!
         #
         #
+        # self.schema_registry = CachedSchemaRegistryClient({"url": SCHEMA_REGISTRY_URL})
+
         self.broker_properties = {
-            # TODO
-            # TODO
-            # TODO
+            "bootstrap.servers": BROKER_URL,
+            "schema.registry.url": SCHEMA_REGISTRY_URL
         }
 
         # If the topic does not already exist, try to create it
@@ -49,8 +53,11 @@ class Producer:
             Producer.existing_topics.add(self.topic_name)
 
         # TODO: Configure the AvroProducer
-        # self.producer = AvroProducer(
-        # )
+        self.producer = AvroProducer(
+            self.broker_properties,
+            default_key_schema=self.key_schema, 
+            default_value_schema=self.value_schema
+        )
 
     def create_topic(self):
         """Creates the producer topic if it does not already exist"""
@@ -58,12 +65,20 @@ class Producer:
         #
         # TODO: Write code that creates the topic for this producer if it does not already exist on
         # the Kafka Broker.
-        #
-        #
-        logger.info("topic creation kafka integration incomplete - skipping")
 
-    def time_millis(self):
-        return int(round(time.time() * 1000))
+        client = AdminClient(self.broker_properties)
+
+        futures = client.create_topics(
+            [NewTopic(topic=self.topic_name, num_partitions=self.num_partitions, replication_factor=self.num_replicas)]
+        )
+
+        for _, future in futures.items():
+            try:
+                future.result()
+            except Exception as e:
+                print("exiting production loop")
+
+        logger.info("topic creation kafka integration incomplete - skipping")
 
     def close(self):
         """Prepares the producer for exit by cleaning up the producer"""
@@ -72,8 +87,18 @@ class Producer:
         # TODO: Write cleanup code for the Producer here
         #
         #
+        Producer.existing_topics.discard(self.topic_name)
+
         logger.info("producer close incomplete - skipping")
 
     def time_millis(self):
         """Use this function to get the key for Kafka Events"""
         return int(round(time.time() * 1000))
+
+    # def produce(self, topic, key, value):
+    #     # Avro producer will serialize the JSON key and value objects for us, no need to serialize to string.
+    #     self.avroProducer.produce(topic=topic, key=key, value=value, key_schema=self.key_schema, value_schema=self.value_schema)        
+    #     #self.avroProducer.produce(topic=topic, key=key, value=json.dumps(value), key_schema=self.key_schema, value_schema=self.value_schema)
+
+        
+

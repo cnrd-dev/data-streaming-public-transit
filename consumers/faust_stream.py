@@ -33,16 +33,16 @@ class TransformedStation(faust.Record):
 #   places it into a new topic with only the necessary information.
 app = faust.App("stations-stream", broker="kafka://localhost:9092", store="memory://")
 # TODO: Define the input Kafka Topic. Hint: What topic did Kafka Connect output to?
-# topic = app.topic("TODO", value_type=Station)
+topic = app.topic(f"com.station.{Station.station_name}", value_type=Station)
 # TODO: Define the output Kafka Topic
-# out_topic = app.topic("TODO", partitions=1)
+out_topic = app.topic(f"com.station.transformed.{Station.station_name}", value_type=TransformedStation, partitions=1)
 # TODO: Define a Faust Table
-#table = app.Table(
-#    # "TODO",
-#    # default=TODO,
-#    partitions=1,
-#    changelog_topic=out_topic,
-#)
+table = app.Table(
+   "stations_transformed",
+   default=TransformedStation,
+   partitions=1,
+   changelog_topic=out_topic,
+)
 
 
 #
@@ -53,6 +53,29 @@ app = faust.App("stations-stream", broker="kafka://localhost:9092", store="memor
 #
 #
 
+@app.agent(topic)
+async def transform_stations(stations):
+    """_summary_
+
+    Args:
+        stations (_type_): _description_
+    """
+
+    async for station in stations:
+        
+        station_table = TransformedStation(station.station_id, station.station_name, station.order, "na")
+        if station.red:
+            station_table.line = "red"
+        elif station.blue:
+            station_table.line = "blue"
+        elif station.green:
+            station_table.line = "green"
+        else:
+            station_table.line = "unknown"
+            
+        table[station.station_id] = station_table
+        
+        #logger.debug(f" Faust processor: {json.dumps(asdict(t))}")
 
 if __name__ == "__main__":
     app.main()

@@ -37,9 +37,11 @@ class Weather(Producer):
         #
         #
         super().__init__(
-            "weather", # TODO: Come up with a better topic name
+            topic_name="com.weather", # TODO: Come up with a better topic name
             key_schema=Weather.key_schema,
             value_schema=Weather.value_schema,
+            num_partitions=3,
+            num_replicas=1,
         )
 
         self.status = Weather.status.sunny
@@ -71,6 +73,11 @@ class Weather(Producer):
         self.status = random.choice(list(Weather.status))
 
     def run(self, month):
+        """_summary_
+
+        Args:
+            month (_type_): _description_
+        """
         self._set_weather(month)
 
         #
@@ -80,30 +87,40 @@ class Weather(Producer):
         #
         #
         logger.info("weather kafka proxy integration incomplete - skipping")
-        #resp = requests.post(
-        #    #
-        #    #
-        #    # TODO: What URL should be POSTed to?
-        #    #
-        #    #
-        #    f"{Weather.rest_proxy_url}/TODO",
-        #    #
-        #    #
-        #    # TODO: What Headers need to bet set?
-        #    #
-        #    #
-        #    headers={"Content-Type": "TODO"},
-        #    data=json.dumps(
-        #        {
-        #            #
-        #            #
-        #            # TODO: Provide key schema, value schema, and records
-        #            #
-        #            #
-        #        }
-        #    ),
-        #)
-        #resp.raise_for_status()
+        resp = requests.post(
+           #
+           #
+           # TODO: What URL should be POSTed to?
+           #
+           #
+           f"{Weather.rest_proxy_url}/topics/com.weather",
+           #
+           #
+           # TODO: What Headers need to bet set?
+           #
+           #
+           headers={"Content-Type": "application/vnd.kafka.avro.v2+json"},
+           data=json.dumps(
+               {
+                    "key_schema": json.dumps(Weather.key_schema),
+                    "value_schema": json.dumps(Weather.value_schema),
+                    "records": [
+                        {
+                            "value":
+                            {
+                                "temperature": float(self.temp),
+                                "status": self.status.name
+                            },
+                            "key":
+                            {
+                                "timestamp": self.time_millis()
+                            }
+                        }
+                    ]
+               }
+           )
+        )
+        resp.raise_for_status()
 
         logger.debug(
             "sent weather data to kafka, temp: %s, status: %s",
