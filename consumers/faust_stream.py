@@ -29,53 +29,40 @@ class TransformedStation(faust.Record):
     line: str
 
 
-# TODO: Define a Faust Stream that ingests data from the Kafka Connect stations topic and
-#   places it into a new topic with only the necessary information.
 app = faust.App("stations-stream", broker="kafka://localhost:9092", store="memory://")
-# TODO: Define the input Kafka Topic. Hint: What topic did Kafka Connect output to?
-topic = app.topic(f"com.station.{Station.station_name}", value_type=Station)
-# TODO: Define the output Kafka Topic
-out_topic = app.topic(f"com.station.transformed.{Station.station_name}", value_type=TransformedStation, partitions=1)
-# TODO: Define a Faust Table
+
+topic = app.topic(f"org.chicago.cta.stations", value_type=Station)
+
+out_topic = app.topic(f"org.chicago.cta.stations.table.v1", partitions=1)
+
 table = app.Table(
-   "stations_transformed",
-   default=TransformedStation,
-   partitions=1,
-   changelog_topic=out_topic,
+    "transformed_station",
+    default=int,
+    partitions=1,
+    changelog_topic=out_topic,
 )
 
 
-#
-#
-# TODO: Using Faust, transform input `Station` records into `TransformedStation` records. Note that
-# "line" is the color of the station. So if the `Station` record has the field `red` set to true,
-# then you would set the `line` of the `TransformedStation` record to the string `"red"`
-#
-#
-
 @app.agent(topic)
 async def transform_stations(stations):
-    """_summary_
-
-    Args:
-        stations (_type_): _description_
-    """
-
+    """Combines line colour into a sign field"""
     async for station in stations:
-        
-        station_table = TransformedStation(station.station_id, station.station_name, station.order, "na")
+
         if station.red:
-            station_table.line = "red"
+            line = "red"
         elif station.blue:
-            station_table.line = "blue"
+            line = "blue"
         elif station.green:
-            station_table.line = "green"
-        else:
-            station_table.line = "unknown"
-            
-        table[station.station_id] = station_table
-        
-        #logger.debug(f" Faust processor: {json.dumps(asdict(t))}")
+            line = "green"
+
+        transformed_station = TransformedStation(
+            station_id=station.station_id,
+            station_name=station.station_name,
+            order=station.order,
+            line=line,
+        )
+        table[station.station_id] = transformed_station
+
 
 if __name__ == "__main__":
     app.main()

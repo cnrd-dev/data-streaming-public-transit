@@ -10,8 +10,11 @@ from tornado import gen
 
 logger = logging.getLogger(__name__)
 
-BROKER_URL = ["PLAINTEXT://localhost:9092" ,"PLAINTEXT://localhost:9093", "PLAINTEXT://localhost:9094"]
+BROKER_URL = (
+    "PLAINTEXT://localhost:9092,PLAINTEXT://localhost:9093,PLAINTEXT://localhost:9094"
+)
 SCHEMA_REGISTRY_URL = "http://localhost:8081"
+
 
 class KafkaConsumer:
     """Defines the base kafka consumer class"""
@@ -32,48 +35,28 @@ class KafkaConsumer:
         self.consume_timeout = consume_timeout
         self.offset_earliest = offset_earliest
 
-        #
-        #
-        # TODO: Configure the broker properties below. Make sure to reference the project README
-        # and use the Host URL for Kafka and Schema Registry!
-        #
-        #
-        # self.schema_registry = CachedSchemaRegistryClient({"url": SCHEMA_REGISTRY_URL})
-
         self.broker_properties = {
-            "bootstrap.servers": BROKER_URL
+            "bootstrap.servers": BROKER_URL,
+            "group.id": f"{topic_name_pattern}",
+            "auto.offset.reset": "earliest" if offset_earliest else "latest",
         }
 
-        # TODO: Create the Consumer, using the appropriate type.
         if is_avro is True:
-            self.broker_properties["schema.registry.url"] = "http://localhost:8081"
+            self.broker_properties["schema.registry.url"] = SCHEMA_REGISTRY_URL
             self.consumer = AvroConsumer(self.broker_properties)
         else:
             self.consumer = Consumer(self.broker_properties)
 
-        #
-        #
-        # TODO: Configure the AvroConsumer and subscribe to the topics. Make sure to think about
-        # how the `on_assign` callback should be invoked.
-        #
-        #
-        self.consumer.subscribe([topic_name_pattern], on_assign=self.on_assign)
+        self.consumer.subscribe([self.topic_name_pattern], on_assign=self.on_assign)
 
     def on_assign(self, consumer, partitions):
         """Callback for when topic assignment takes place"""
-        # TODO: If the topic is configured to use `offset_earliest` set the partition offset to
-        # the beginning or earliest
-        # logger.info("on_assign is incomplete - skipping")
-        if self.offset_earliest:
-            for partition in partitions:
-                partition.offset = confluent_kafka.OFFSET_BEGINNING
-                #
-                #
-                # TODO
-                #
-                #
 
-        logger.info("partitions assigned for %s", self.topic_name_pattern)
+        for partition in partitions:
+            if self.offset_earliest is True:
+                partition.offset = confluent_kafka.OFFSET_BEGINNING
+
+        logger.info("Partitions assigned for %s", self.topic_name_pattern)
         consumer.assign(partitions)
 
     async def consume(self):
@@ -86,35 +69,21 @@ class KafkaConsumer:
 
     def _consume(self):
         """Polls for a message. Returns 1 if a message was received, 0 otherwise"""
-        #
-        #
-        # TODO: Poll Kafka for messages. Make sure to handle any errors or exceptions.
-        # Additionally, make sure you return 1 when a message is processed, and 0 when no message
-        # is retrieved.
-        #
-        #
 
-        # try:
-        message = self.consumer.poll(timeout=self.consume_timeout)
-        
-        if message is None:
-            logger.debug("No message in topic yet.")
+        try:
+            message = self.consumer.poll(timeout=self.consume_timeout)
+        except Exception as e:
+            logger.error(f"Poll error on topic {self.topic_name_pattern}.\n{e}")
             return 0
-        elif message.error() is None:
-            logger.debug("Got message.")
+
+        if message is None:
+            return 0
+        elif message.error() is not None:
+            return 0
+        else:
             self.message_handler(message)
             return 1
-        else:
-            error = message.error()
-            logger.error(f"Error in consumer:{self.topic_name_pattern} while consuming messages. Err code: {error.code()}, error-name: {error.name()}, error.str:{error.str()}" )
-            return 0
 
     def close(self):
         """Cleans up any open kafka consumers"""
-        #
-        #
-        # TODO: Cleanup the kafka consumer
-        #
-        #
-        self.consumer.unassign()
-        self.consumer.unsubscribe()
+        self.consumer.close()
